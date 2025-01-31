@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Basic 3D FPS</title>
+    <title>Enhanced 3D FPS with Shooting Feedback</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
         body { margin: 0; overflow: hidden; }
@@ -23,16 +23,14 @@
         #movePad { left: 30px; bottom: 100px; }
         #lookPad { right: 30px; bottom: 100px; }
         #fireBtn {
-            bottom: 220px; /* Adjusted position */
-            background: rgba(255,0,0,0.3);
-            box-shadow: 0 0 10px rgba(255,0,0,0.5);
-        }
-        .projectile {
             position: absolute;
-            width: 4px;
-            height: 4px;
-            background: red;
+            right: 40px;
+            bottom: 220px;
+            width: 80px;
+            height: 80px;
+            background: rgba(255,0,0,0.3);
             border-radius: 50%;
+            box-shadow: 0 0 10px rgba(255,0,0,0.5);
         }
         #miniMap {
             position: fixed;
@@ -41,6 +39,13 @@
             background: rgba(0,0,0,0.7);
             padding: 10px;
             border-radius: 5px;
+        }
+        .projectile {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: red;
+            border-radius: 50%;
         }
     </style>
 </head>
@@ -102,6 +107,17 @@ wallTextures[2].pattern.addColorStop(1, '#f00');
 // Input handling
 let moveTouch = {active: false, x: 0, y: 0};
 let lookTouch = {active: false, x: 0, y: 0};
+let isFiring = false;
+
+// Weapon state
+let weaponPos = 0;
+let weaponPosY = 0;
+let recoilForce = 0;
+const projectiles = [];
+const RECOIL_STRENGTH = 15;
+const RECOIL_DAMPING = 0.8;
+const PROJECTILE_SPEED = 5;
+const PROJECTILE_MAX_DIST = 10;
 
 // Setup canvas
 function resize() {
@@ -151,6 +167,7 @@ if ('ontouchstart' in window) {
     canvas.addEventListener('touchend', () => {
         moveTouch.active = false;
         lookTouch.active = false;
+        isFiring = false;
     });
 }
 
@@ -173,7 +190,7 @@ function updateMiniMap() {
     miniMap.innerHTML += `<div style="position: absolute; left: ${player.x*mapScale}px; top: ${player.y*mapScale}px; color: #0f0;">▲</div>`;
 }
 
-// Enhanced rendering with textures
+// Raycasting
 function castRays() {
     const fov = Math.PI/3;
     const numRays = canvas.width;
@@ -205,16 +222,12 @@ function castRays() {
         const texture = wallTextures[hitWall];
         
         // Draw texture
-        if(texture.type === 'striped') {
-            ctx.fillStyle = wallX > 0.5 ? texture.pattern : texture.color;
-        } else {
-            ctx.fillStyle = texture.pattern;
-        }
+        ctx.fillStyle = texture.type === 'striped' && wallX > 0.5 ? texture.pattern : texture.color;
         ctx.fillRect(x, canvas.height/2 - wallHeight/2, 1, wallHeight);
     }
 }
 
-// Movement handling with touch pads
+// Movement handling
 function movePlayer() {
     // Movement from left pad
     if(moveTouch.active) {
@@ -239,19 +252,7 @@ function movePlayer() {
     }
 }
 
-// Weapon state
-let weaponPos = 0;
-let weaponPosY = 0;
-let recoilForce = 0;
-const projectiles = [];
-
-// Add these constants
-const RECOIL_STRENGTH = 15;
-const RECOIL_DAMPING = 0.8;
-const PROJECTILE_SPEED = 5;
-const PROJECTILE_MAX_DIST = 10;
-
-// Modified drawWeapon function
+// Weapon system
 function drawWeapon() {
     // Weapon body with recoil
     ctx.fillStyle = '#666';
@@ -273,7 +274,6 @@ function drawWeapon() {
     weaponPosY *= 0.9;
 }
 
-// New projectile functions
 function fireProjectile() {
     const projectile = {
         x: player.x,
@@ -312,7 +312,7 @@ function drawProjectiles() {
     });
 }
 
-// Modified game loop
+// Game loop
 function update() {
     movePlayer();
     ctx.fillStyle = '#112';
@@ -327,6 +327,12 @@ function update() {
     updateMiniMap();
     requestAnimationFrame(update);
 }
+
+// Event listeners
+window.addEventListener('keydown', e => keys[e.key] = true);
+window.addEventListener('keyup', e => keys[e.key] = false);
+canvas.addEventListener('mousedown', () => isFiring = true);
+canvas.addEventListener('mouseup', () => isFiring = false);
 
 update();
 </script>
