@@ -5,13 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
         body { margin: 0; overflow: hidden; }
-        #gameCanvas { touch-action: none; }
+        #gameCanvas { 
+            touch-action: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
         .mobile-controls {
             position: fixed;
             bottom: 20px;
             width: 100%;
             height: 100%;
             display: none;
+            pointer-events: none;
         }
         .control-pad {
             position: absolute;
@@ -19,6 +25,7 @@
             height: 120px;
             background: rgba(255,255,255,0.2);
             border-radius: 50%;
+            pointer-events: auto;
         }
         #movePad { left: 30px; bottom: 100px; }
         #lookPad { right: 30px; bottom: 100px; }
@@ -31,21 +38,16 @@
             background: rgba(255,0,0,0.3);
             border-radius: 50%;
             box-shadow: 0 0 10px rgba(255,0,0,0.5);
+            pointer-events: auto;
         }
         #miniMap {
             position: fixed;
             top: 20px;
             left: 20px;
             background: rgba(0,0,0,0.7);
-            padding: 10px;
+            padding: 5px;
             border-radius: 5px;
-        }
-        .projectile {
-            position: absolute;
-            width: 4px;
-            height: 4px;
-            background: red;
-            border-radius: 50%;
+            color: white;
         }
     </style>
 </head>
@@ -73,7 +75,7 @@ const player = {
     height: 0.5
 };
 
-// Larger 15x15 map with different wall types
+// Map data (15x15 grid)
 const map = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
     [1,0,0,0,0,0,0,0,0,0,0,0,2,0,1],
@@ -92,17 +94,11 @@ const map = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ];
 
-// Texture patterns
+// Initialize textures after canvas setup
 const wallTextures = {
-    1: {color: '#666', pattern: ctx.createLinearGradient(0,0,50,50), type: 'striped'},
-    2: {color: '#933', pattern: ctx.createLinearGradient(0,0,30,30), type: 'dotted'}
+    1: {color: '#666', pattern: null, type: 'striped'},
+    2: {color: '#933', pattern: null, type: 'dotted'}
 };
-
-// Initialize textures
-wallTextures[1].pattern.addColorStop(0, '#555');
-wallTextures[1].pattern.addColorStop(0.5, '#777');
-wallTextures[2].pattern.addColorStop(0, '#900');
-wallTextures[2].pattern.addColorStop(1, '#f00');
 
 // Input handling
 let moveTouch = {active: false, x: 0, y: 0};
@@ -110,7 +106,6 @@ let lookTouch = {active: false, x: 0, y: 0};
 let isFiring = false;
 
 // Weapon state
-let weaponPos = 0;
 let weaponPosY = 0;
 let recoilForce = 0;
 const projectiles = [];
@@ -123,9 +118,45 @@ const PROJECTILE_MAX_DIST = 10;
 function resize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
+    
+    // Reinitialize textures with proper canvas size
+    wallTextures[1].pattern = createStripedTexture('#555', '#777');
+    wallTextures[2].pattern = createDottedTexture('#900', '#f00');
 }
 resize();
 window.addEventListener('resize', resize);
+
+function createStripedTexture(color1, color2) {
+    const texture = document.createElement('canvas');
+    texture.width = 64;
+    texture.height = 64;
+    const tctx = texture.getContext('2d');
+    
+    tctx.fillStyle = color1;
+    tctx.fillRect(0, 0, 64, 64);
+    tctx.fillStyle = color2;
+    for(let i = 0; i < 64; i += 8) {
+        tctx.fillRect(i, 0, 4, 64);
+    }
+    return texture;
+}
+
+function createDottedTexture(color1, color2) {
+    const texture = document.createElement('canvas');
+    texture.width = 64;
+    texture.height = 64;
+    const tctx = texture.getContext('2d');
+    
+    tctx.fillStyle = color1;
+    tctx.fillRect(0, 0, 64, 64);
+    tctx.fillStyle = color2;
+    for(let y = 0; y < 64; y += 8) {
+        for(let x = 0; x < 64; x += 8) {
+            tctx.fillRect(x, y, 4, 4);
+        }
+    }
+    return texture;
+}
 
 // Mobile controls
 if ('ontouchstart' in window) {
@@ -174,20 +205,18 @@ if ('ontouchstart' in window) {
 // MiniMap
 function updateMiniMap() {
     const mapScale = 8;
-    let mapHTML = '<table style="border-collapse: collapse;">';
+    let mapHTML = '<div style="font-family: monospace; font-size: 8px; line-height: 8px;">';
     for(let y = 0; y < map.length; y++) {
-        mapHTML += '<tr>';
         for(let x = 0; x < map[y].length; x++) {
-            const cell = map[x][y] ? '▩' : ' ';
-            mapHTML += `<td style="width: ${mapScale}px; height: ${mapScale}px; color: ${map[x][y] ? '#666' : '#fff'}">${cell}</td>`;
+            mapHTML += map[x][y] ? '█' : ' ';
         }
-        mapHTML += '</tr>';
+        mapHTML += '<br>';
     }
-    mapHTML += '</table>';
+    mapHTML += '</div>';
     miniMap.innerHTML = mapHTML;
     
     // Draw player
-    miniMap.innerHTML += `<div style="position: absolute; left: ${player.x*mapScale}px; top: ${player.y*mapScale}px; color: #0f0;">▲</div>`;
+    miniMap.innerHTML += `<div style="position: absolute; left: ${player.x*mapScale}px; top: ${player.y*mapScale}px; color: #0f0; font-size: 12px;">▶</div>`;
 }
 
 // Raycasting
@@ -204,7 +233,7 @@ function castRays() {
         const rayDirX = Math.cos(rayAngle);
         const rayDirY = Math.sin(rayAngle);
         
-        while (hitWall === 0 && distance < 20) {
+        while (!hitWall && distance < 20) {
             distance += 0.1;
             const testX = Math.floor(player.x + rayDirX * distance);
             const testY = Math.floor(player.y + rayDirY * distance);
@@ -222,30 +251,24 @@ function castRays() {
         const texture = wallTextures[hitWall];
         
         // Draw texture
-        ctx.fillStyle = texture.type === 'striped' && wallX > 0.5 ? texture.pattern : texture.color;
+        ctx.fillStyle = texture.color;
         ctx.fillRect(x, canvas.height/2 - wallHeight/2, 1, wallHeight);
     }
 }
 
 // Movement handling
 function movePlayer() {
-    // Movement from left pad
     if(moveTouch.active) {
         const moveX = moveTouch.x * 2 - 1;
         const moveY = moveTouch.y * 2 - 1;
         
         const newX = player.x + Math.cos(player.dir) * moveY * player.speed;
         const newY = player.y + Math.sin(player.dir) * moveY * player.speed;
-        const newSideX = player.x + Math.cos(player.dir + Math.PI/2) * moveX * player.speed;
-        const newSideY = player.y + Math.sin(player.dir + Math.PI/2) * moveX * player.speed;
         
         if (map[Math.floor(newX)][Math.floor(player.y)] === 0) player.x = newX;
         if (map[Math.floor(player.x)][Math.floor(newY)] === 0) player.y = newY;
-        if (map[Math.floor(newSideX)][Math.floor(player.y)] === 0) player.x = newSideX;
-        if (map[Math.floor(player.x)][Math.floor(newSideY)] === 0) player.y = newSideY;
     }
 
-    // Rotation from right pad
     if(lookTouch.active) {
         const lookX = lookTouch.x * 2 - 1;
         player.dir += lookX * player.turnSpeed;
@@ -254,24 +277,18 @@ function movePlayer() {
 
 // Weapon system
 function drawWeapon() {
-    // Weapon body with recoil
     ctx.fillStyle = '#666';
-    const weaponY = canvas.height - 100 + weaponPosY + Math.sin(Date.now() * 0.1) * 2;
+    const weaponY = canvas.height - 100 + weaponPosY;
     ctx.fillRect(canvas.width/2 - 50, weaponY, 100, 50);
     
-    // Weapon animation
     if (isFiring) {
-        weaponPos = Math.sin(Date.now() * 0.1) * 10;
         recoilForce += RECOIL_STRENGTH;
         fireProjectile();
-    } else {
-        weaponPos *= 0.9;
     }
     
-    // Apply recoil damping
     recoilForce *= RECOIL_DAMPING;
     weaponPosY += recoilForce;
-    weaponPosY *= 0.9;
+    weaponPosY = Math.max(-20, Math.min(20, weaponPosY));
 }
 
 function fireProjectile() {
@@ -279,8 +296,7 @@ function fireProjectile() {
         x: player.x,
         y: player.y,
         dir: player.dir,
-        distance: 0,
-        startTime: Date.now()
+        distance: 0
     };
     projectiles.push(projectile);
 }
@@ -288,11 +304,10 @@ function fireProjectile() {
 function updateProjectiles() {
     for (let i = projectiles.length - 1; i >= 0; i--) {
         const p = projectiles[i];
-        p.x += Math.cos(p.dir) * PROJECTILE_SPEED * 0.1;
-        p.y += Math.sin(p.dir) * PROJECTILE_SPEED * 0.1;
-        p.distance += PROJECTILE_SPEED * 0.1;
+        p.x += Math.cos(p.dir) * 0.2;
+        p.y += Math.sin(p.dir) * 0.2;
+        p.distance += 0.2;
         
-        // Remove old projectiles
         if (p.distance > PROJECTILE_MAX_DIST) {
             projectiles.splice(i, 1);
         }
@@ -300,40 +315,44 @@ function updateProjectiles() {
 }
 
 function drawProjectiles() {
+    ctx.fillStyle = 'red';
     projectiles.forEach(p => {
-        // Convert 3D position to 2D screen position
-        const screenX = (p.x - player.x) * 50 + canvas.width/2;
-        const screenY = (p.y - player.y) * 50 + canvas.height/2;
-        
-        ctx.fillStyle = `rgba(255,0,0,${1 - p.distance/PROJECTILE_MAX_DIST})`;
+        const screenX = (p.x - player.x) * 100 + canvas.width/2;
+        const screenY = (p.y - player.y) * 100 + canvas.height/2;
         ctx.beginPath();
-        ctx.arc(screenX, screenY, 4 * (1 - p.distance/PROJECTILE_MAX_DIST), 0, Math.PI * 2);
+        ctx.arc(screenX, screenY, 4 * (1 - p.distance/PROJECTILE_MAX_DIST), 0, Math.PI*2);
         ctx.fill();
     });
 }
 
 // Game loop
 function update() {
-    movePlayer();
     ctx.fillStyle = '#112';
     ctx.fillRect(0, 0, canvas.width, canvas.height/2);
     ctx.fillStyle = '#333';
     ctx.fillRect(0, canvas.height/2, canvas.width, canvas.height/2);
     
+    movePlayer();
     castRays();
     updateProjectiles();
     drawProjectiles();
     drawWeapon();
     updateMiniMap();
+    
     requestAnimationFrame(update);
 }
 
 // Event listeners
-window.addEventListener('keydown', e => keys[e.key] = true);
-window.addEventListener('keyup', e => keys[e.key] = false);
+window.addEventListener('keydown', e => {
+    if(e.key === ' ') isFiring = true;
+});
+window.addEventListener('keyup', e => {
+    if(e.key === ' ') isFiring = false;
+});
 canvas.addEventListener('mousedown', () => isFiring = true);
 canvas.addEventListener('mouseup', () => isFiring = false);
 
+// Initial call
 update();
 </script>
 </body>
