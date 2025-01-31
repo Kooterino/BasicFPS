@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Basic 3D FPS</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        body { margin: 0; overflow: hidden; }
+        #gameCanvas { touch-action: none; }
+        .mobile-controls {
+            position: fixed;
+            bottom: 20px;
+            width: 100%;
+            display: none;
+        }
+        .control-btn {
+            width: 60px;
+            height: 60px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 50%;
+            position: absolute;
+        }
+        #fireBtn { right: 20px; }
+        #moveUp { left: 80px; bottom: 0; }
+        #moveDown { left: 80px; bottom: 120px; }
+        #moveLeft { left: 20px; bottom: 60px; }
+        #moveRight { left: 140px; bottom: 60px; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div class="mobile-controls">
+        <div id="moveUp" class="control-btn"></div>
+        <div id="moveDown" class="control-btn"></div>
+        <div id="moveLeft" class="control-btn"></div>
+        <div id="moveRight" class="control-btn"></div>
+        <div id="fireBtn" class="control-btn"></div>
+    </div>
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let isMobile = false;
+
+// Game state
+const player = {
+    x: 3.5,
+    y: 3.5,
+    dir: 0,
+    speed: 0.1,
+    turnSpeed: 0.04,
+    height: 0.5
+};
+
+const map = [
+    [1,1,1,1,1,1,1],
+    [1,0,0,0,0,0,1],
+    [1,0,1,0,1,0,1],
+    [1,0,0,0,0,0,1],
+    [1,0,1,0,1,0,1],
+    [1,0,0,0,0,0,1],
+    [1,1,1,1,1,1,1]
+];
+
+// Weapon state
+let weaponPos = 0;
+let isFiring = false;
+
+// Input handling
+const keys = {};
+let touchState = { up: false, down: false, left: false, right: false };
+
+// Setup canvas
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Mobile controls
+if ('ontouchstart' in window) {
+    isMobile = true;
+    document.querySelector('.mobile-controls').style.display = 'block';
+    
+    const handleTouch = (e, state) => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        const x = touch.clientX - rect.left;
+        const y = touch.clientY - rect.top;
+        
+        // Check control areas
+        touchState.up = y < canvas.height/2;
+        touchState.down = y > canvas.height/2;
+        touchState.left = x < canvas.width/2;
+        touchState.right = x > canvas.width/2;
+    };
+
+    canvas.addEventListener('touchstart', e => handleTouch(e, true));
+    canvas.addEventListener('touchmove', e => handleTouch(e, true));
+    canvas.addEventListener('touchend', () => touchState = { up: false, down: false, left: false, right: false });
+}
+
+// Movement
+function movePlayer() {
+    let moveX = 0, moveY = 0;
+    
+    if (keys.ArrowUp || touchState.up) moveY += 1;
+    if (keys.ArrowDown || touchState.down) moveY -= 1;
+    if (keys.ArrowLeft || touchState.left) player.dir -= player.turnSpeed;
+    if (keys.ArrowRight || touchState.right) player.dir += player.turnSpeed;
+
+    const newX = player.x + Math.cos(player.dir) * moveY * player.speed;
+    const newY = player.y + Math.sin(player.dir) * moveY * player.speed;
+    
+    if (map[Math.floor(newX)][Math.floor(player.y)] === 0) player.x = newX;
+    if (map[Math.floor(player.x)][Math.floor(newY)] === 0) player.y = newY;
+}
+
+// Rendering
+function castRays() {
+    const fov = Math.PI/3;
+    const numRays = canvas.width;
+    
+    for (let x = 0; x < numRays; x++) {
+        const rayAngle = player.dir - fov/2 + (x/numRays)*fov;
+        let distance = 0;
+        let hitWall = false;
+        
+        const rayDirX = Math.cos(rayAngle);
+        const rayDirY = Math.sin(rayAngle);
+        
+        while (!hitWall && distance < 20) {
+            distance += 0.1;
+            const testX = Math.floor(player.x + rayDirX * distance);
+            const testY = Math.floor(player.y + rayDirY * distance);
+            
+            if (testX < 0 || testX >= map.length || testY < 0 || testY >= map[0].length) {
+                hitWall = true;
+                distance = 20;
+            } else if (map[testX][testY] === 1) {
+                hitWall = true;
+            }
+        }
+        
+        const wallHeight = (canvas.height / distance) * 50;
+        ctx.fillStyle = `hsl(${distance * 10}, 50%, 50%)`;
+        ctx.fillRect(x, canvas.height/2 - wallHeight/2, 1, wallHeight);
+    }
+}
+
+// Weapon animation
+function drawWeapon() {
+    ctx.fillStyle = '#666';
+    ctx.fillRect(canvas.width/2 - 50, canvas.height - 100 + weaponPos, 100, 50);
+    if (isFiring) {
+        weaponPos = Math.sin(Date.now() * 0.1) * 10;
+    } else {
+        weaponPos *= 0.9;
+    }
+}
+
+// Game loop
+function update() {
+    movePlayer();
+    ctx.fillStyle = '#112';
+    ctx.fillRect(0, 0, canvas.width, canvas.height/2);
+    ctx.fillStyle = '#333';
+    ctx.fillRect(0, canvas.height/2, canvas.width, canvas.height/2);
+    
+    castRays();
+    drawWeapon();
+    requestAnimationFrame(update);
+}
+
+// Event listeners
+window.addEventListener('keydown', e => keys[e.key] = true);
+window.addEventListener('keyup', e => keys[e.key] = false);
+canvas.addEventListener('mousedown', () => isFiring = true);
+canvas.addEventListener('mouseup', () => isFiring = false);
+canvas.addEventListener('touchstart', () => isFiring = true);
+canvas.addEventListener('touchend', () => isFiring = false);
+
+update();
+</script>
+</body>
+</html>
